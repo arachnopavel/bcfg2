@@ -566,7 +566,8 @@ class XMLFileBacked(FileBacked):
                 xdata = self.xdata.getroottree()
             else:
                 xdata = lxml.etree.parse(fname)
-        for el in xdata.findall('//' + xinclude):
+
+        for el in xdata.iterfind('.//' + xinclude):
             name = el.get("href")
             if name.startswith("/"):
                 fpath = name
@@ -574,14 +575,21 @@ class XMLFileBacked(FileBacked):
                 rel = fname or self.name
                 fpath = os.path.join(os.path.dirname(rel), name)
 
+            parent = el.getparent()
+
             # expand globs in xinclude, a bcfg2-specific extension
             extras = glob.glob(fpath)
             if not extras:
                 msg = "%s: %s does not exist, skipping" % (self.name, name)
-                if el.findall('./%sfallback' % Bcfg2.Server.XI_NAMESPACE):
+                fbl = el.findall('./%sfallback' % Bcfg2.Server.XI_NAMESPACE)
+                if len(fbl) == 1:
                     self.logger.debug(msg)
+                    fallback = fbl[0]
+                    for cel in fallback.getchildren():
+                        parent.append(cel)
                 else:
                     self.logger.error(msg)
+                    break
                 # add a FAM monitor for this path.  this isn't perfect
                 # -- if there's an xinclude of "*.xml", we'll watch
                 # the literal filename "*.xml".  but for non-globbing
@@ -589,8 +597,8 @@ class XMLFileBacked(FileBacked):
                 if fpath not in self.extra_monitors:
                     self.add_monitor(fpath)
 
-            parent = el.getparent()
             parent.remove(el)
+
             for extra in extras:
                 if extra != self.name:
                     lxml.etree.SubElement(parent, xinclude, href=extra)
